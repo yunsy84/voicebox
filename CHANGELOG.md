@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Linux
+
+- **Installing the CUDA or ROCm backend on Linux downloads a native Linux binary.** The GPU server release assets are now platform-qualified (`voicebox-server-{cuda,rocm}-<platform>.tar.gz`, `{cuda,rocm}-libs-<platform>-<version>.tar.gz`) and a `build-gpu-linux` release job builds the Linux CUDA and ROCm bundles alongside the Windows ones, so Linux no longer fetches a Windows `.exe` and silently falls back to CPU. The ROCm download is offered on Linux hosts with an AMD ROCm driver (`/dev/kfd`), and the CUDA download gate from 0.6 now refuses only platforms without a published asset (macOS, Linux arm64). — @1337hero, @smendola ([#851](https://github.com/jamiepine/voicebox/pull/851), [#561](https://github.com/jamiepine/voicebox/pull/561); fixes [#767](https://github.com/jamiepine/voicebox/issues/767))
+
 ## [0.6.0] - 2026-10-04
 
 **The stability release.** 0.5 made Voicebox a dictation and agent-voice studio; 0.6 makes it hold up. Sixty-plus contributor pull requests landed since 0.5 and most of them fix something that used to go wrong in daily use: MLX crashed with `There is no Stream(gpu, 1) in current thread` when a model was loaded on one thread and used on another, memory grew with every generation and never came back on unload, a fully-cached model retried HuggingFace five times per file before it would load offline, the Docker image could not write its own data volume, dictation refused to arm without an LLM it was never going to call, and the backend test suite would not even collect. All of that is fixed. The headline features ride on top: native AMD ROCm on Windows and in Docker, five new interface languages, and Chatterbox multilingual running on Apple Silicon through MLX.
