@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Linux
+
+- **Closing the window quits the app.** With "Keep server running" off, closing the main window on Linux left the Tauri process alive after the backend had stopped (the hidden dictation pill window kept it running), and its speak monitor retried `/events/speak` every 30 seconds forever. On Linux the close flow now exits the application once the frontend finishes its cleanup, or after the 5-second timeout; macOS and Windows keep their existing close behaviour. — @Fulminao ([#1040](https://github.com/jamiepine/voicebox/pull/1040))
+- **`just build-server-cuda` works on Linux.** The recipe builds the CUDA backend with `build_binary.py --cuda` and installs it into `$XDG_DATA_HOME/sh.voicebox.app/backends/cuda` (default `~/.local/share`), matching the Windows recipe. — @Fulminao ([#1044](https://github.com/jamiepine/voicebox/pull/1044))
+
 ## [0.6.0] - 2026-10-04
 
 **The stability release.** 0.5 made Voicebox a dictation and agent-voice studio; 0.6 makes it hold up. Sixty-plus contributor pull requests landed since 0.5 and most of them fix something that used to go wrong in daily use: MLX crashed with `There is no Stream(gpu, 1) in current thread` when a model was loaded on one thread and used on another, memory grew with every generation and never came back on unload, a fully-cached model retried HuggingFace five times per file before it would load offline, the Docker image could not write its own data volume, dictation refused to arm without an LLM it was never going to call, and the backend test suite would not even collect. All of that is fixed. The headline features ride on top: native AMD ROCm on Windows and in Docker, five new interface languages, and Chatterbox multilingual running on Apple Silicon through MLX.
