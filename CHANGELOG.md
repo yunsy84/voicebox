@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Export
+
+- **Stories export as M4B audiobooks or MP3 with chapter markers, and single generations export as MP3.** `GET /stories/{id}/export-audio` takes `format=wav|m4b|mp3` and `chapters=none|auto`; `auto` writes one chapter per story item titled from its first sentence (CJK aware, multi-track items deduped), so the export navigates like a real audiobook in Apple Books and Plex. `GET /history/{id}/export-audio?format=mp3` transcodes a single generation. The Stories "Export Audio" button is now a WAV / MP3 / Audiobook (M4B) menu and the history row menu gains "Export Audio (MP3)". WAV stays the default everywhere, so existing callers get the same bytes. Encoding shells out to ffmpeg (Homebrew, MacPorts and WinGet paths are searched even when the sidecar's PATH is minimal; `VOICEBOX_FFMPEG_DIR` overrides) and a missing ffmpeg returns a 503 with install instructions instead of an empty download. — @suifeng156, @joneldiablo ([#787](https://github.com/jamiepine/voicebox/pull/787), MP3 export from [#1048](https://github.com/jamiepine/voicebox/pull/1048); addresses [#165](https://github.com/jamiepine/voicebox/issues/165), [#270](https://github.com/jamiepine/voicebox/issues/270))
+
 ## [0.6.0] - 2026-10-04
 
 **The stability release.** 0.5 made Voicebox a dictation and agent-voice studio; 0.6 makes it hold up. Sixty-plus contributor pull requests landed since 0.5 and most of them fix something that used to go wrong in daily use: MLX crashed with `There is no Stream(gpu, 1) in current thread` when a model was loaded on one thread and used on another, memory grew with every generation and never came back on unload, a fully-cached model retried HuggingFace five times per file before it would load offline, the Docker image could not write its own data volume, dictation refused to arm without an LLM it was never going to call, and the backend test suite would not even collect. All of that is fixed. The headline features ride on top: native AMD ROCm on Windows and in Docker, five new interface languages, and Chatterbox multilingual running on Apple Silicon through MLX.
