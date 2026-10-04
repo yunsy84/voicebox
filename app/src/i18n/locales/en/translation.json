@@ -698,7 +698,8 @@
       "show": "Show delivery instructions",
       "hide": "Hide delivery instructions",
       "tooltip": "Delivery instructions (tone, emotion, pace)",
-      "placeholder": "Delivery instructions — e.g. Speak slowly with warmth, Authoritative and clear…"
+      "placeholder": "Delivery instructions — e.g. Speak slowly with warmth, Authoritative and clear…",
+      "placeholderOmnivoice": "Voice attributes, comma-separated — e.g. female, low pitch, british accent (fixed vocabulary: gender, age, pitch, whisper, accent)"
     },
     "voiceSelector": {
       "placeholder": "Select a voice…"
