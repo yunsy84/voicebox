@@ -214,6 +214,19 @@ _stt_backend: Optional[STTBackend] = None
 _llm_backends: dict[str, LLMBackend] = {}
 _llm_backends_lock = threading.Lock()
 
+# Custom OpenAI-compatible LLM endpoint config, seeded from persisted
+# capture settings on startup and refreshed whenever the settings service
+# writes an update. Empty strings and None both mean "unset" and fall back
+# to the built-in Qwen3 backend.
+_custom_llm_endpoint: Optional[str] = None
+_custom_llm_model: Optional[str] = None
+_custom_llm_api_key: Optional[str] = None
+
+# ``_llm_backends`` key for the singleton OpenAI-compat backend. Extracted
+# so ``set_llm_config`` (cache invalidation) and ``get_llm_backend`` (cache
+# lookup + on-miss install) can't drift on the string literal.
+_OPENAI_COMPAT_CACHE_KEY = "openai_compat"
+
 # Supported TTS engines — keyed by engine name, value is the backend class import path.
 # The factory function uses this for the if/elif chain; the model configs live on the backend classes.
 TTS_ENGINES = {
@@ -590,7 +603,7 @@ async def ensure_model_cached_or_raise(engine: str, model_size: str = "default")
 def unload_model_by_config(config: ModelConfig) -> bool:
     """Unload a model given its config. Returns True if it was loaded, False otherwise."""
     from . import get_tts_backend_for_engine
-    from ..services import tts, transcribe, llm as llm_service
+    from ..services import tts, transcribe
     from ..utils.cache import clear_voice_prompt_memory_cache
 
     if config.engine == "whisper":
@@ -601,7 +614,11 @@ def unload_model_by_config(config: ModelConfig) -> bool:
         return False
 
     if config.engine == "qwen_llm":
-        backend = llm_service.get_llm_model()
+        # Always address the local Qwen backend here: when a custom
+        # OpenAI-compatible endpoint is active, ``get_llm_model()`` returns
+        # the remote backend, and the Models page must still manage the
+        # on-device model.
+        backend = get_llm_backend_for_engine("qwen_llm")
         loaded_size = getattr(backend, "_current_model_size", None) or getattr(backend, "model_size", None)
         if backend.is_loaded() and loaded_size == config.model_size:
             backend.unload_model()
@@ -637,7 +654,7 @@ def unload_model_by_config(config: ModelConfig) -> bool:
 def check_model_loaded(config: ModelConfig) -> bool:
     """Check if a model is currently loaded."""
     from . import get_tts_backend_for_engine
-    from ..services import tts, transcribe, llm as llm_service
+    from ..services import tts, transcribe
 
     try:
         if config.engine == "whisper":
@@ -645,7 +662,7 @@ def check_model_loaded(config: ModelConfig) -> bool:
             return whisper_model.is_loaded() and getattr(whisper_model, "model_size", None) == config.model_size
 
         if config.engine == "qwen_llm":
-            backend = llm_service.get_llm_model()
+            backend = get_llm_backend_for_engine("qwen_llm")
             loaded_size = getattr(backend, "_current_model_size", None) or getattr(backend, "model_size", None)
             return backend.is_loaded() and loaded_size == config.model_size
 
@@ -668,7 +685,7 @@ def check_model_loaded(config: ModelConfig) -> bool:
 def get_model_load_func(config: ModelConfig):
     """Return a callable that loads/downloads the model."""
     from . import get_tts_backend_for_engine
-    from ..services import tts, transcribe, llm as llm_service
+    from ..services import tts, transcribe
 
     if config.engine == "whisper":
         return lambda: transcribe.get_whisper_model().load_model(config.model_size)
@@ -680,7 +697,7 @@ def get_model_load_func(config: ModelConfig):
         return lambda: get_tts_backend_for_engine(config.engine).load_model(config.model_size)
 
     if config.engine == "qwen_llm":
-        return lambda: llm_service.get_llm_model().load_model(config.model_size)
+        return lambda: get_llm_backend_for_engine("qwen_llm").load_model(config.model_size)
 
     return lambda: get_tts_backend_for_engine(config.engine).load_model()
 
@@ -789,8 +806,78 @@ def get_stt_backend() -> STTBackend:
     return _stt_backend
 
 
+def set_llm_config(
+    endpoint: Optional[str],
+    model: Optional[str],
+    api_key: Optional[str],
+) -> None:
+    """Update the runtime custom-LLM endpoint config atomically.
+
+    Called from the settings service whenever the user writes to the
+    ``custom_llm_endpoint`` / ``custom_llm_model`` / ``custom_llm_api_key``
+    fields, and once on startup with the persisted row. Passing empty
+    strings or ``None`` clears the config and reverts subsequent
+    ``get_llm_backend()`` calls to the built-in Qwen3 path.
+
+    The write, the change detection, and the cache invalidation all run
+    under ``_llm_backends_lock`` so a concurrent ``get_llm_backend()``
+    can't sample the endpoint/model/key mid-update and end up talking
+    to a stale URL with fresh credentials (or vice versa).
+    """
+    global _custom_llm_endpoint, _custom_llm_model, _custom_llm_api_key
+    endpoint = endpoint or None
+    model = model or None
+    api_key = api_key or None
+    with _llm_backends_lock:
+        changed = (
+            endpoint != _custom_llm_endpoint
+            or model != _custom_llm_model
+            or api_key != _custom_llm_api_key
+        )
+        _custom_llm_endpoint = endpoint
+        _custom_llm_model = model
+        _custom_llm_api_key = api_key
+        if changed:
+            _llm_backends.pop(_OPENAI_COMPAT_CACHE_KEY, None)
+
+
 def get_llm_backend() -> LLMBackend:
-    """Get or create the default Qwen3 LLM backend based on platform."""
+    """Get or create the active LLM backend.
+
+    When a custom OpenAI-compatible endpoint has been configured via
+    ``set_llm_config()``, returns an ``OpenAICompatLLMBackend`` targeting
+    that endpoint; otherwise falls back to the platform-specific Qwen3
+    backend (MLX on Apple Silicon, PyTorch elsewhere).
+
+    The config snapshot, cache lookup, and (if needed) backend
+    construction all happen inside ``_llm_backends_lock`` so a request
+    can't race a ``set_llm_config()`` write and end up talking to a
+    prior endpoint using fresh credentials, or the reverse.
+    """
+    from .openai_compat_backend import OpenAICompatLLMBackend
+
+    with _llm_backends_lock:
+        endpoint = _custom_llm_endpoint
+        model = _custom_llm_model
+        api_key = _custom_llm_api_key
+        if endpoint and model:
+            cached = _llm_backends.get(_OPENAI_COMPAT_CACHE_KEY)
+            if cached is not None:
+                return cached
+            backend = OpenAICompatLLMBackend(
+                endpoint=endpoint,
+                model=model,
+                api_key=api_key,
+            )
+            _llm_backends[_OPENAI_COMPAT_CACHE_KEY] = backend
+            return backend
+
+    # No custom config — hand off to the Qwen dispatch. ``get_llm_backend_for_engine``
+    # reuses this exact ``_llm_backends_lock`` (see its body below), and
+    # ``threading.Lock`` is non-reentrant, so this call MUST run after the
+    # ``with`` block above has released the lock — nesting it inside would
+    # self-deadlock the calling thread. Doing it here also means a slow
+    # model load doesn't block concurrent ``set_llm_config()`` writes.
     return get_llm_backend_for_engine("qwen_llm")
 
 
@@ -825,7 +912,11 @@ def get_llm_backend_for_engine(engine: str) -> LLMBackend:
 def reset_backends():
     """Reset backend instances (useful for testing)."""
     global _tts_backend, _tts_backends, _stt_backend, _llm_backends
+    global _custom_llm_endpoint, _custom_llm_model, _custom_llm_api_key
     _tts_backend = None
     _tts_backends.clear()
     _stt_backend = None
     _llm_backends.clear()
+    _custom_llm_endpoint = None
+    _custom_llm_model = None
+    _custom_llm_api_key = None
