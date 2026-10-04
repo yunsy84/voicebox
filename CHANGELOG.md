@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### API
+
+- **OpenAI-compatible text-to-speech API.** `POST /v1/audio/speech` and `GET /v1/models` accept OpenAI's request shape, so the official `openai` SDKs, Open WebUI, Home Assistant and any other OpenAI TTS client become a local, offline TTS by changing only the base URL. `voice` is a Voicebox profile (name or id, falling back to the per-client binding and default voice like `/speak`); `model` is a Voicebox engine or model variant, with `tts-1`, `tts-1-hd` and `gpt-4o-mini-tts` accepted as aliases for the profile's configured engine; `response_format` supports `wav`, `mp3`, `flac`, `opus`, `pcm` and (with ffmpeg) `aac`; `speed` is a pitch-preserving time stretch; `instructions` feeds the engine's instruct prompt. Errors use OpenAI's `{"error": {...}}` body, and the endpoint is documented on the MCP Server page. — @neuron-tech-ai (from [#656](https://github.com/jamiepine/voicebox/pull/656); fixes [#10](https://github.com/jamiepine/voicebox/issues/10))
+
 ## [0.6.0] - 2026-10-04
 
 **The stability release.** 0.5 made Voicebox a dictation and agent-voice studio; 0.6 makes it hold up. Sixty-plus contributor pull requests landed since 0.5 and most of them fix something that used to go wrong in daily use: MLX crashed with `There is no Stream(gpu, 1) in current thread` when a model was loaded on one thread and used on another, memory grew with every generation and never came back on unload, a fully-cached model retried HuggingFace five times per file before it would load offline, the Docker image could not write its own data volume, dictation refused to arm without an LLM it was never going to call, and the backend test suite would not even collect. All of that is fixed. The headline features ride on top: native AMD ROCm on Windows and in Docker, five new interface languages, and Chatterbox multilingual running on Apple Silicon through MLX.
