@@ -9,7 +9,7 @@
 
 ### Linux
 
-- **Closing the window quits the app.** With "Keep server running" off, closing the main window on Linux left the Tauri process alive after the backend had stopped (the hidden dictation pill window kept it running), and its speak monitor retried `/events/speak` every 30 seconds forever. The close flow now exits the application once the frontend finishes its cleanup, or after the 5-second timeout. — @Fulminao ([#1040](https://github.com/jamiepine/voicebox/pull/1040))
+- **Closing the window quits the app.** With "Keep server running" off, closing the main window on Linux left the Tauri process alive after the backend had stopped (the hidden dictation pill window kept it running), and its speak monitor retried `/events/speak` every 30 seconds forever. On Linux the close flow now exits the application once the frontend finishes its cleanup, or after the 5-second timeout; macOS and Windows keep their existing close behaviour. — @Fulminao ([#1040](https://github.com/jamiepine/voicebox/pull/1040))
 - **`just build-server-cuda` works on Linux.** The recipe builds the CUDA backend with `build_binary.py --cuda` and installs it into `$XDG_DATA_HOME/sh.voicebox.app/backends/cuda` (default `~/.local/share`), matching the Windows recipe. — @Fulminao ([#1044](https://github.com/jamiepine/voicebox/pull/1044))
 
 ## [0.6.0] - 2026-10-04
